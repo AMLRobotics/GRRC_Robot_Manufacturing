@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="tool_diameter" default="20" doc="The manufacturing tool of UR robot's diameter."/>
+  <arg name="target_filename" default="TestObj_1.STL" doc="Target object's STL file name."/>
+
+  <node name="stl_tool_path" pkg="stl_reader" type="stl_tool_path.py" respawn="false" output="screen">
+    <param name="tool_diameter" value="$(arg tool_diameter)"/>
+    <param name="target_filename" value="$(arg target_filename)"/>
+  </node>
+</launch>

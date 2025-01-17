@@ -1,0 +1,80 @@
+# version of docker-compose
+version: '2.2'
+
+# external network
+networks:
+ macvlan-network:
+  external: true
+
+# services (container)
+services:
+ ur-ros-driver:
+  image: ur-ros-control:latest
+  container_name: ur-ros-driver
+  networks:
+   macvlan-network:
+    ipv4_address: 192.168.1.3
+  environment:
+   - "ROS_MASTER_URI=http://192.168.1.101:11311"
+   - "ROS_HOSTNAME=192.168.1.3"
+   - "DISPLAY=unix$DISPLAY"
+  ports:
+   - "50002:50002"
+  volumes:
+   - /tmp/.X11-unix:/tmp/.X11-unix:rw
+  command: bash -c "source /opt/ros/noetic/setup.bash && cd ~/catkin_ws && catkin_make && source ~/catkin_ws/devel/setup.bash && roslaunch ur_robot_driver ur5_cartesian_passthrough_bringup.launch robot_ip:=192.168.1.102"
+  cpus: 1.0
+  privileged: true
+  restart: always
+
+ ur-ros-control:
+  image: ur-ros-control:latest
+  container_name: ur-ros-control
+  depends_on:
+   - ur-ros-driver
+  networks:
+   macvlan-network:
+    ipv4_address: 192.168.1.4
+  environment:
+   - "ROS_MASTER_URI=http://192.168.1.101:11311"
+   - "ROS_HOSTNAME=192.168.1.4"
+   - "DISPLAY=unix$DISPLAY" # for keyboard input
+  volumes:
+   - ./ur_ros_cartesian_control:/root/catkin_ws/src/ur_ros_cartesian_control
+   - /tmp/.X11-unix:/tmp/.X11-unix:rw # for keyboard input
+  command: tail -F anything
+  privileged: true
+
+ pickit-camera:
+  image: pickit:latest
+  #container_name: ur-ros-control
+  networks:
+   macvlan-network:
+    ipv4_address: 192.168.1.5
+  extra_hosts:
+   - 'pc-10259:192.168.1.101'
+  environment:
+   - "ROS_MASTER_URI=http://192.168.1.101:11311"
+   - "ROS_HOSTNAME=192.168.1.5"
+   - "DISPLAY=unix$DISPLAY" # for keyboard input
+  volumes:
+   - ./pickit_vision:/root/catkin_ws/src/pickit_vision
+   - /tmp/.X11-unix:/tmp/.X11-unix:rw # for keyboard input
+  command: tail -F anything
+  privileged: true
+
+ stl_reader:
+  image: pickit:latest
+  #container_name: ur-ros-control
+  networks:
+   macvlan-network:
+    ipv4_address: 192.168.1.6
+  environment:
+   - "ROS_MASTER_URI=http://192.168.1.101:11311"
+   - "ROS_HOSTNAME=192.168.1.6"
+   - "DISPLAY=unix$DISPLAY" # for keyboard input
+  volumes:
+   - ./stl_reader:/root/catkin_ws/src/stl_reader
+   - /tmp/.X11-unix:/tmp/.X11-unix:rw # for keyboard input
+  command: tail -F anything
+  privileged: true
