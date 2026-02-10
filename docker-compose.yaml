@@ -23,7 +23,14 @@ services:
   volumes:
    - /tmp/.X11-unix:/tmp/.X11-unix:rw
    - ./ur_ros_cartesian_control:/root/catkin_ws/src/ur_ros_cartesian_control
-  command: bash -c "source /opt/ros/noetic/setup.bash && cd ~/catkin_ws && catkin_make && source ~/catkin_ws/devel/setup.bash && roslaunch ur_robot_driver ur5_cartesian_passthrough_bringup.launch robot_ip:=192.168.1.102"
+  command: "source /opt/ros/noetic/setup.bash &&\ 
+          cd ~/catkin_ws && catkin_make &&\ 
+          rm -rf /root/catkin_ws/src/fmauch_universal_robot/ur_description/urdf/ur.xacro &&\
+          cp src/ur_ros_cartesian_control/ur_ros_cartesian_control/ur.xacro src/fmauch_universal_robot/ur_description/urdf/ur.xacro &&\
+          chmod +x src/fmauch_universal_robot/ur_description/urdf/ur.xacro &&\
+          catkin_make &&\
+          source ~/catkin_ws/devel/setup.bash &&\ 
+          roslaunch ur_robot_driver ur5_cartesian_passthrough_bringup.launch robot_ip:=192.168.1.102"
   cpus: 1.0
   privileged: true
   restart: always
