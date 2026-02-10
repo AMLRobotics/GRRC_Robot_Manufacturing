@@ -1,0 +1,3 @@
+<launch>
+    <param name="robot_description" command="$(find xacro)/xacro '$(find ur_ros_cartesian_control)/urdf/manufacture_system.xacro'"/>
+</launch>

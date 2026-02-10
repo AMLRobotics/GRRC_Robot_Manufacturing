@@ -1,0 +1,188 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="ros.org" name="custom_mobile_manipulator">
+    <xacro:macro name="mobile_manipulator">
+
+        <xacro:property name="base_height" value="0.099" />
+        <xacro:property name="base_length" value="1.175" />
+        <xacro:property name="base_width" value="1.5" />
+        <xacro:property name="socket_height" value="0.02" />
+        <xacro:property name="socket_length" value="0.2" />
+        <xacro:property name="socket_width" value="0.2" />
+        <xacro:property name="manipulator_base_height" value="0.04" />
+
+        <xacro:include filename="$(find ur_description)/urdf/inc/ur5_macro.xacro"/>
+
+        <!-- *************************************************** -->
+        <!-- 1. Custom Mobile Base Definition (Links and Joints) -->
+        <!-- *************************************************** -->
+
+        <!-- Base Link (chassis) -->
+        <link name="base_link"/>
+        <link name="table_base_link">
+            <visual>
+                <origin xyz="${-base_width / 2} ${base_length / 2} 0" rpy="1.57079632679 0 0"/>
+                <geometry>
+                    <mesh filename="package://ur_ros_cartesian_control/meshes/optical_table.STL" scale="0.001 0.001 0.001"/>
+                </geometry>
+            </visual>
+            <collision>
+                <origin xyz="0 0 ${-base_height / 2}" rpy="3.141592 0 3.141592"/>
+                <geometry>
+                    <box size="${base_length} ${base_width} ${base_height}"/>
+                </geometry>
+            </collision>
+            <!-- Inertial definitions are necessary for simulation -->
+            <inertial>
+                <mass value="50.0" />
+                <origin xyz="0 0 0" />
+                <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0" />
+            </inertial>
+        </link>
+        <link name="ur5_socket_link">
+            <visual>
+                <origin xyz="${-socket_length / 2} ${-socket_width / 2} 0" rpy="0 0 0"/>
+                <geometry>
+                    <mesh filename="package://ur_ros_cartesian_control/meshes/ur5_socket.STL" scale="0.001 0.001 0.001"/>
+                </geometry>
+            </visual>
+            <collision>
+                <origin xyz="0 0 ${socket_height / 2}" rpy="0 0 0"/>
+                <geometry>
+                    <box size="${socket_length} ${socket_width} ${socket_height}"/>
+                </geometry>
+            </collision>
+            <!-- Inertial definitions are necessary for simulation -->
+            <inertial>
+                <mass value="50.0" />
+                <origin xyz="0 0 0" />
+                <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0" />
+            </inertial>
+        </link>
+
+        <!-- *************************************************** -->
+        <!-- 2. Call the UR10 macro and attach it to the base_link -->
+        <!-- *************************************************** -->
+        <xacro:ur5_robot
+            prefix="ur_"
+            />
+
+        <link name="tool_holder_link">
+            <visual>
+                <origin xyz="-0.0315 0.078 0" rpy="1.57079632679 0 0"/>
+                <geometry>
+                    <mesh filename="package://ur_ros_cartesian_control/meshes/grinder_holder.STL" scale="0.001 0.001 0.001"/>
+                </geometry>
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry>
+                    <box size="0.1 0.1 0.1"/>
+                </geometry>
+            </collision>
+            <!-- Inertial definitions are necessary for simulation -->
+            <inertial>
+                <mass value="50.0" />
+                <origin xyz="0 0 0" />
+                <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0" />
+            </inertial>
+        </link>
+        <link name="ee_link">
+            <visual>
+                <origin xyz="-0.01 -0.1075 -0.055" rpy="-1.047200654 0 0"/>
+                <geometry>
+                    <mesh filename="package://ur_ros_cartesian_control/meshes/grinder.STL" scale="0.001 0.001 0.001"/>
+                </geometry>
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry>
+                    <box size="0.1 0.1 0.1"/>
+                </geometry>
+            </collision>
+            <!-- Inertial definitions are necessary for simulation -->
+            <inertial>
+                <mass value="50.0" />
+                <origin xyz="0 0 0" />
+                <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0" />
+            </inertial>
+        </link>
+
+        <link name="object_zig_link">
+            <visual>
+                <origin xyz="-0.11 -0.11 0" rpy="0 0 0"/>
+                <geometry>
+                    <mesh filename="package://ur_ros_cartesian_control/meshes/grinding_test_zig.STL" scale="0.001 0.001 0.001"/>
+                </geometry>
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry>
+                    <box size="0.1 0.1 0.1"/>
+                </geometry>
+            </collision>
+            <!-- Inertial definitions are necessary for simulation -->
+            <inertial>
+                <mass value="50.0" />
+                <origin xyz="0 0 0" />
+                <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0" />
+            </inertial>
+        </link>
+        <link name="object_base_link">
+            <visual>
+                <origin xyz="-0.05 -0.05 0" rpy="0 0 0"/>
+                <geometry>
+                    <mesh filename="package://ur_ros_cartesian_control/meshes/grinding_test.STL" scale="0.001 0.001 0.001"/>
+                </geometry>
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry>
+                    <box size="0.1 0.1 0.1"/>
+                </geometry>
+            </collision>
+            <!-- Inertial definitions are necessary for simulation -->
+            <inertial>
+                <mass value="50.0" />
+                <origin xyz="0 0 0" />
+                <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0" />
+            </inertial>
+        </link>
+
+        <joint name="base_to_table" type="fixed">
+            <parent link="base_link"/> 
+            <child link="table_base_link"/> 
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </joint>
+        <joint name="table_to_socket" type="fixed">
+            <parent link="table_base_link"/> 
+            <child link="ur5_socket_link"/> 
+            <origin xyz="0 0.2125 ${base_height}" rpy="0 0 0"/>
+        </joint>
+        <joint name="table_to_manipulator" type="fixed">
+            <parent link="ur5_socket_link"/> 
+            <child link="ur_base_link"/> 
+            <origin xyz="0 0 ${socket_height}" rpy="0 0 3.141592"/>
+        </joint>
+        <joint name="flange_to_holder" type="fixed">
+            <parent link="ur_tool0"/> 
+            <child link="tool_holder_link"/> 
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </joint>
+        <joint name="holder_to_ee" type="fixed">
+            <parent link="tool_holder_link"/> 
+            <child link="ee_link"/> 
+            <origin xyz="0 0.065 0.115" rpy="0 0 0"/>
+        </joint>
+        <joint name="table_to_zig" type="fixed">
+            <parent link="table_base_link"/> 
+            <child link="object_zig_link"/> 
+            <origin xyz="-0.0125 -0.2 ${base_height}" rpy="0 0 0"/>
+        </joint>
+        <joint name="zig_to_object" type="fixed">
+            <parent link="object_zig_link"/> 
+            <child link="object_base_link"/> 
+            <origin xyz="0 0 0.1" rpy="0 0 0"/>
+        </joint>
+    </xacro:macro>
+    <xacro:mobile_manipulator/>
+</robot>
