@@ -22,6 +22,7 @@ services:
    - "50002:50002"
   volumes:
    - /tmp/.X11-unix:/tmp/.X11-unix:rw
+   - ./ur_ros_cartesian_control:/root/catkin_ws/src/ur_ros_cartesian_control
   command: bash -c "source /opt/ros/noetic/setup.bash && cd ~/catkin_ws && catkin_make && source ~/catkin_ws/devel/setup.bash && roslaunch ur_robot_driver ur5_cartesian_passthrough_bringup.launch robot_ip:=192.168.1.102"
   cpus: 1.0
   privileged: true
@@ -75,6 +76,22 @@ services:
    - "DISPLAY=unix$DISPLAY" # for keyboard input
   volumes:
    - ./stl_reader:/root/catkin_ws/src/stl_reader
+   - /tmp/.X11-unix:/tmp/.X11-unix:rw # for keyboard input
+  command: tail -F anything
+  privileged: true
+
+robot_simulation:
+  image: ur-ros-control:latest
+  container_name: robot_simulation
+  networks:
+   macvlan-network:
+    ipv4_address: 192.168.1.7
+  environment:
+   - "ROS_MASTER_URI=http://192.168.1.101:11311"
+   - "ROS_HOSTNAME=192.168.1.7"
+   - "DISPLAY=unix$DISPLAY" # for keyboard input
+  volumes:
+   - ./urdf_simulation:/root/catkin_ws/src/urdf_simulation
    - /tmp/.X11-unix:/tmp/.X11-unix:rw # for keyboard input
   command: tail -F anything
   privileged: true

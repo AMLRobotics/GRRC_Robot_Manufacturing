@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<robot name="Manuracturing">
+ <link name="robot_base">
+  <visual>
+   <origin rqy="0.0 0.0 0.0" xyz="0 0 0"/>
+   <geometry>
+    <mesh filename="~/catkin_ws/src/urdf_simulation/meshs/base_part.STL">
+   </geometry>
+  </visual>
+ </link>
+  
+ <link name="socket">
+  <visual>
+   <origin rqy="0.0 0.0 0.0" xyz="0 0 0"/>
+   <geometry>
+    <mesh filename="~/catkin_ws/src/urdf_simulation/meshs/UR5_socket.STL">
+   </geometry>
+  </visual>
+ </link>

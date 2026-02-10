@@ -17,11 +17,20 @@ RUN /bin/bash -c "apt-get update -y &&\
     apt-get install -y git &&\
     apt-get install -y zlib1g-dev"
 
-# Create catkin workspace
-# Install UR Robot Driver
+
+# Install Custom Package(ur_ros_joint_control)
 RUN /bin/bash -c "apt-get update &&\
     source /opt/ros/noetic/setup.bash &&\
-    mkdir -p ~/catkin_ws/src && cd ~/catkin_ws &&\
+    mkdir -p ~/catkin_ws/src && cd ~/catkin_ws &&\  
+    git clone https://github.com/Hangijun/ur_ros_joint_control.git src/ur_ros_joint_control &&\
+    git clone https://github.com/Hangijun/ur_ros_cartesian_control.git src/ur_ros_cartesian_control &&\
+    source /opt/ros/noetic/setup.bash &&\
+    catkin_make &&\
+    source devel/setup.bash"
+
+# Create catkin workspace
+# Install UR Robot Driver
+RUN /bin/bash -c "cd ~/catkin_ws &&\
     git clone https://github.com/Hangijun/Universal_Robots_ROS_Driver_UR5.git src/Universal_Robots_ROS_Driver &&\
     git clone -b calibration_devel https://github.com/fmauch/universal_robot.git src/fmauch_universal_robot &&\    
     apt update -qq &&\
@@ -50,21 +59,8 @@ RUN /bin/bash -c "apt-get update &&\
 # Install scipy
 RUN python3 -m pip install scipy
 
-# Install Custom Package(ur_ros_joint_control)
-RUN /bin/bash -c "cd ~/catkin_ws &&\
-    git clone https://github.com/Hangijun/ur_ros_joint_control.git src/ur_ros_joint_control &&\
-    source /opt/ros/noetic/setup.bash &&\
-    catkin_make &&\
-    source devel/setup.bash"
-
 # Additional
 RUN /bin/bash -c "apt-get update -y &&\
     apt-get install -y python3-tk &&\
     apt-get install -y tk-dev"
 
-# Install Custom Package(ur_ros_cartesian_control)
-RUN /bin/bash -c "cd ~/catkin_ws &&\
-    git clone https://github.com/Hangijun/ur_ros_cartesian_control.git src/ur_ros_cartesian_control &&\
-    source /opt/ros/noetic/setup.bash &&\
-    catkin_make &&\
-    source devel/setup.bash"

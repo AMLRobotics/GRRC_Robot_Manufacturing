@@ -6,6 +6,10 @@ project(stl_reader)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   rospy
+  tf2_ros
+  geometry_msgs
+  tf2_geometry_msgs
+  tf
 )
 
 catkin_package(
