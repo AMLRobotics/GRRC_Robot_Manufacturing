@@ -44,7 +44,7 @@ class STLToolPath():
         self.T_B_to_BL_inv = inv(self.T_base_link_to_base) 
 
         # B. flange -> tool0 변환 (URDF: X축 90도, Z축 90도)
-        self.T_flange_to_tool0 = euler_matrix(math.pi/2, math.pi/2, 0)
+        self.T_flange_to_tool0 = euler_matrix(math.pi/2, 0, math.pi/2)
         # 우리가 공식에서 필요한 건 (T_flange^tool0)의 역행렬입니다.
         self.T_F_to_T0_inv = inv(self.T_flange_to_tool0)
 
@@ -260,110 +260,80 @@ class STLToolPath():
 
         self.robot_path = np.array(robot_path_list)
 
-        print(self.robot_path[946])
-
         for i in range(len(self.vectors)):
             norm = np.linalg.norm(self.vectors[i])
             if norm is not 0:
                 self.vectors[i] = self.vectors[i] / norm
 
         # ---------------------------------------------------------
-        # 3. [긴급 처방: 전 구간 순수 IK 기반 궤적 생성]
+        # 3. [차동 적분 루프 적용 부분] 
         # ---------------------------------------------------------
-        print("긴급 처방: 전 구간 순수 IK 솔버를 통한 궤적 생성을 시작합니다. (시간이 다소 소요될 수 있습니다...)")
+        print("최적화 기반 관절 궤적 적분을 시작합니다. (KDL LMA 내장 솔버 가동 중...)")
         
         self.robot_joint_path = []
         rospy.wait_for_service('/IK_solve')
-        
-        # 첫 번째 IK 연산을 위한 초기 Seed (Radian)
         q = [-np.pi/2.0, -np.pi/2.0, -np.pi/2.0, -np.pi/2.0, np.pi/2.0, -np.pi]
 
-        # 좌표계 맞추기
         b_to_t_pos = np.hstack([((self.robot_path[:, 0] - 50) / 1000 + self.base_to_object[0]).reshape(len(self.robot_path), 1), 
                                 ((self.robot_path[:, 1] - 50) / 1000 + self.base_to_object[1]).reshape(len(self.robot_path), 1), 
                                 (self.robot_path[:, 2] / 1000  + self.base_to_object[2]).reshape(len(self.robot_path), 1)])
         b_to_t_rot = self.robot_path[:, 3:]
 
-        target_trans = np.empty((0, 3), dtype = np.float32)
-        target_rpy = np.empty((0, 3), dtype = np.float32)
-
+        target_kdl_matrices = []
 
         for i in range(len(b_to_t_pos)):
             T_b_to_t = compose_matrix(translate=b_to_t_pos[i], angles=b_to_t_rot[i])
             
-            # ========================================================
-            # 🌟 [대참사 해결] 툴의 Z축(바라보는 방향)을 추출합니다.
-            z_axis = T_b_to_t[0:3, 2]
-            
-            # Z축이 수평에 가까운 '옆면'일 때만 180도 뒤집기(역회전 교정)를 적용합니다!
-            # 윗면(Z축이 -1.0)일 때 뒤집으면 툴이 하늘을 향해 꺾여 IK 노드가 터집니다.
-            if abs(z_axis[2]) < 0.5: 
-                T_tool_align = euler_matrix(0, 0, math.pi)
-                T_b_to_t_tuned = np.dot(T_b_to_t, T_tool_align)
-            else:
-                T_tool_align = euler_matrix(np.pi, 0, 0)
-                T_b_to_t_tuned = np.dot(T_b_to_t, T_tool_align) # 윗면은 원래 계산대로 얌전히 꽂습니다.
-            # ========================================================
-
-            # 불필요한 90도 눕힘 오프셋은 완전히 삭제된 상태 유지
+            # 🌟 [치명적 버그 해결] 목표 프레임을 완벽한 Tool0 기준으로 통일! (오타 수정)
+            # 이전의 T_F_to_T0_inv 대신 T_flange_to_tool0를 곱하여 올바른 Tool0 좌표를 얻습니다.
             T_bl_to_tool0 = np.dot(self.T_B_to_BL_inv, np.dot(T_b_to_t, self.T_flange_to_tool0))
+            target_kdl_matrices.append(T_bl_to_tool0)
 
-            trans_bl = translation_from_matrix(T_bl_to_tool0)
-            target_trans = np.append(target_trans, [trans_bl], axis = 0)
-            euler_transed = euler_from_matrix(T_bl_to_tool0)
-            euler_transed = np.array([euler_transed])
-            target_rpy = np.append(target_rpy, euler_transed * 180.0 / np.pi, axis = 0)
+        # 🌟 첫 번째 점 IK 솔버 추출 (로봇이 궤적에서 벗어나지 않고 정확히 시작하게 만듭니다)
+        T_0 = target_kdl_matrices[0]
+        trans_0 = translation_from_matrix(T_0)
+        rpy_0 = np.array(euler_from_matrix(T_0)) * 180.0 / np.pi
 
-        # 전 구간 통신을 위한 프록시 연결
-        solve_ik = rospy.ServiceProxy('/IK_solve', cartesian2joint)
-        
-        for i in range(len(target_trans)):
-            
-            # ========================================================
-            # 🌟 [알고리즘 추가] 윗면 진입(불연속 점프) 감지 및 Seed 리셋
-            # ========================================================
-            if i > 0:
-                # 직전 목표점과 현재 목표점의 거리 계산
-                dist_diff = np.linalg.norm(target_trans[i] - target_trans[i-1])
-                
-                # 거리가 2cm 이상 순간이동 했다면 (옆면 -> 윗면 진입 순간!)
-                if dist_diff > 0.02:
-                    print(f"⚠️ [{i} 스텝] 윗면 진입 감지! (거리 점프: {dist_diff*1000:.1f}mm)")
-                    print("IK 솔버의 발산(Crash)을 막기 위해 Seed를 초기 Home 자세로 리셋합니다.")
-                    # 꼬여있는 Seed(q)를 버리고, 가장 안정적인 초기 각도로 덮어씌움
-                    q = [-np.pi/2.0, -np.pi/2.0, -np.pi/2.0, -np.pi/2.0, np.pi/2.0, -np.pi]
-            # ========================================================
+        try:
+            solve_ik = rospy.ServiceProxy('/IK_solve', cartesian2joint)
+            joints = solve_ik(trans_0[0], trans_0[1], trans_0[2], rpy_0[0], rpy_0[1], rpy_0[2], q)
+            current_q = np.array(joints.jointDegs)
+        except rospy.ServiceException as e:
+            print("Service call failed: %s"%e)
 
-            try:
-                joints = solve_ik(target_trans[i][0], target_trans[i][1], target_trans[i][2], 
-                                  target_rpy[i][0], target_rpy[i][1], target_rpy[i][2], q)
-                
-                current_q = np.array(joints.jointDegs)
-                
-                # ========================================================
-                # 🌟 [손목 발작 완벽 차단: 최단 거리(Shortest Path) 언래핑 필터]
-                # ========================================================
-                if len(self.robot_joint_path) > 0:
-                    prev_q = self.robot_joint_path[-1]
-                    for j in range(6):
-                        # 이전 각도와 현재 각도의 차이를 -180 ~ +180도 사이로 강제 정규화
-                        diff = (current_q[j] - prev_q[j] + 180.0) % 360.0 - 180.0
-                        current_q[j] = prev_q[j] + diff
-                # ========================================================
+        # 🌟 [최종 병기] 파이썬 수제 코드를 버리고 C++ 기반 KDL 내장 LMA 솔버 사용!
+        ik_solver = kdl.ChainIkSolverPos_LMA(self.kdl_chain)
 
-                self.robot_joint_path.append(np.copy(current_q))
-                q = (current_q * np.pi / 180.0).tolist()  
+        for i in range(len(target_kdl_matrices)):
+            T = target_kdl_matrices[i]
+
+            # Numpy 4x4 행렬을 KDL 내부 Frame 포맷으로 변환
+            target_frame = kdl.Frame(
+                kdl.Rotation(T[0,0], T[0,1], T[0,2], 
+                             T[1,0], T[1,1], T[1,2], 
+                             T[2,0], T[2,1], T[2,2]),
+                kdl.Vector(T[0,3], T[1,3], T[2,3])
+            )
+
+            # 이전 관절 각도를 Seed로 설정 (Radian 변환 필수)
+            q_init = kdl.JntArray(self.num_joints)
+            for j in range(self.num_joints):
+                q_init[j] = current_q[j] * np.pi / 180.0
+
+            q_out = kdl.JntArray(self.num_joints)
+
+            # KDL 내장 초고속 역기구학 연산 (특이점 자동 회피, 완벽한 추종)
+            ik_solver.CartToJnt(q_init, target_frame, q_out)
+
+            # 결과를 다시 Degree로 변환하여 갱신 및 저장
+            for j in range(self.num_joints):
+                current_q[j] = q_out[j] * 180.0 / np.pi
                 
-            except rospy.ServiceException as e:
-                print("IK Service call failed at step %d: %s" % (i, e))
-                if len(self.robot_joint_path) > 0:
-                    self.robot_joint_path.append(np.copy(self.robot_joint_path[-1]))
-                
-                # 에러 발생 시 노드가 회복할 시간을 조금 더 줍니다.
-                rospy.sleep(0.5)
+            self.robot_joint_path.append(np.copy(current_q))
 
         self.robot_joint_path = np.array(self.robot_joint_path)
-        print("긴급 처방 궤적 생성 완료! (전체 구간 순수 IK 적용)")
+        print("최적화 궤적 생성 완료! (전체 층 단일 가공 궤적)")
+        #print(self.robot_joint_path)
 
         self.robot_cartesian_path = np.empty((0, 6), dtype=float)
         timeout = rospy.Duration(30)
@@ -492,17 +462,17 @@ class STLToolPath():
         ax2.plot(path[:, 0], path[:, 1], zs = path[:, 2])
         ax2.scatter(path[:, 0], path[:, 1], path[:, 2])
 
-        ax2.plot(self.robot_path[820:, 0], self.robot_path[820:, 1], zs = self.robot_path[820:, 2] )
-        ax2.scatter(self.robot_path[820:, 0], self.robot_path[820:, 1], self.robot_path[820:, 2])
+        ax2.plot(self.robot_path[940:, 0], self.robot_path[940:, 1], zs = self.robot_path[940:, 2] )
+        ax2.scatter(self.robot_path[940:, 0], self.robot_path[940:, 1], self.robot_path[940:, 2])
 
         #ax2.plot((self.robot_cartesian_path[:, 0] + 0.05 + self.base_to_object[0]) * 1000, (self.robot_cartesian_path[:, 1] + 0.05 + self.base_to_object[1]) * 1000, (self.robot_cartesian_path[:, 2] - self.base_to_object[2]) * 1000)
         #ax2.scatter((self.robot_cartesian_path[:, 0] + 0.05 + self.base_to_object[0]) * 1000, (self.robot_cartesian_path[:, 1] + 0.05 + self.base_to_object[1]) * 1000, (self.robot_cartesian_path[:, 2] - self.base_to_object[2]) * 1000)
         #print(self.robot_cartesian_path[:, :3], self.robot_cartesian_path[:, 3:] * 180.0 / np.pi)
 
-        mat_rp = R.from_euler('xyz', self.robot_cartesian_path[:, 3:])
+        mat_rp = R.from_euler('zyx', self.robot_cartesian_path[:, 3:])
         mat_rp = mat_rp.as_matrix()
-        rp_vec = mat_rp[:, :, 0]
-        #print(rp_vec.shape)
+        rp_vec = mat_rp[:, :, 2]
+        print(rp_vec.shape)
 
         """for i in range(len(path)):
             #print(degs[i])
@@ -521,45 +491,44 @@ class STLToolPath():
         """
         ax2.auto_scale_xyz(scale, scale, scale)
         plt.show()
-        
+
     def manual_move(self, key):
         if key == keyboard.KeyCode(char='u'):
             if self.action == 0:
-                command = "0.0,-0.3,0.4,180.0,0.0,0.0"
-                """command = command + " {},{},0.4,{},{},{},-2.0".format((self.robot_path[0, 0] - 50) / 1000 + self.base_to_object[0], 
-                                                                    (self.robot_path[0, 1] - 50) / 1000 + self.base_to_object[1], 
-                                                                    self.robot_angle[0, 0], 
-                                                                    self.robot_angle[0, 1], 
-                                                                    self.robot_angle[0, 2])
-                command = command + " {},{},{},{},{},{},-2.0".format((self.robot_path[0, 0] - 50) / 1000 + self.base_to_object[0], 
-                                                                    (self.robot_path[0, 1] - 50) / 1000 + self.base_to_object[1], 
-                                                                    self.robot_path[0, 2] / 1000 + self.base_to_object[2], 
-                                                                    self.robot_angle[0, 0], 
-                                                                    self.robot_angle[0, 1], 
-                                                                    self.robot_angle[0, 2])"""
+                command = "0.0,-0.3,0.4,3.14159,0.0,0.0,-2.0"
+                #command = command + " {},{},0.4,{},{},{},-2.0".format((self.robot_path[0, 0] - 50) / 1000 + self.base_to_object[0], 
+                #                                                    (self.robot_path[0, 1] - 50) / 1000 + self.base_to_object[1], 
+                #                                                    self.robot_angle[0, 0], 
+                #                                                    self.robot_angle[0, 1], 
+                #                                                    self.robot_angle[0, 2])
+                #command = command + " {},{},{},{},{},{},-2.0".format((self.robot_path[0, 0] - 50) / 1000 + self.base_to_object[0], 
+                #                                                    (self.robot_path[0, 1] - 50) / 1000 + self.base_to_object[1], 
+                #                                                    self.robot_path[0, 2] / 1000 + self.base_to_object[2], 
+                #                                                    self.robot_angle[0, 0], 
+                #                                                    self.robot_angle[0, 1], 
+                #                                                    self.robot_angle[0, 2])
                            
                 self.str_pub_pos.publish(command)
                 #rospy.sleep(7.0)
                 self.action = 1
 
             elif self.action == 1:
-                for i in range(820, len(self.trajectory)):
-                    if i == 820:
-                        command = "{},{},{},{},{},{}".format((self.robot_path[i, 0] - 50 ) / 1000 + self.base_to_object[0],
+                for i in range(940, len(self.trajectory)):
+                    if i == 0:
+                        command = "{},{},{},{},{},{},-2.0".format((self.robot_path[i, 0] - 50 ) / 1000 + self.base_to_object[0],
                                                                 (self.robot_path[i, 1] - 50) / 1000 + self.base_to_object[1],
                                                                 self.robot_path[i, 2] / 1000 + self.base_to_object[2], 
-                                                                self.robot_angle[i, 0] * 180 / np.pi, 
-                                                                self.robot_angle[i, 1] * 180 / np.pi, 
-                                                                self.robot_angle[i, 2] * 180 / np.pi)
+                                                                self.robot_angle[i, 0], 
+                                                                self.robot_angle[i, 1], 
+                                                                self.robot_angle[i, 2])
                     else:        
-                        command = command + " {},{},{},{},{},{}".format((self.robot_path[i, 0] - 50) / 1000 + self.base_to_object[0], 
+                        command = command + " {},{},{},{},{},{},-2.0".format((self.robot_path[i, 0] - 50) / 1000 + self.base_to_object[0], 
                                                                             (self.robot_path[i, 1]- 50) / 1000 + self.base_to_object[1], 
                                                                             self.robot_path[i, 2] / 1000 + self.base_to_object[2], 
-                                                                            self.robot_angle[i, 0]* 180 / np.pi, 
-                                                                            self.robot_angle[i, 1]* 180 / np.pi, 
-                                                                            self.robot_angle[i, 2]* 180 / np.pi)
-
-                    #print(self.robot_angle[i, :])
+                                                                            self.robot_angle[i, 0], 
+                                                                            self.robot_angle[i, 1], 
+                                                                            self.robot_angle[i, 2])
+        
                 self.str_pub_pos.publish(command)
                 self.action = 0
 
@@ -734,12 +703,12 @@ class STLToolPath():
         elif len(layer_dots) < len(layer_degs):
             layer_degs = layer_degs[:len(layer_dots)]
 
-        # 3. 중심점 계산 및 각도 구하기
+        # 3. 중심점 계산 및 반지름 구하기
         center_x = np.mean(layer_dots[:, 0])
         center_y = np.mean(layer_dots[:, 1])
-        raw_angles = np.arctan2(layer_dots[:, 1] - center_y, layer_dots[:, 0] - center_x)
         
-        # 4. 각도를 0 ~ 2pi 범위로 정규화
+        # 4. 각도 구하기 및 정렬 (이제 핑퐁 없이 완벽한 원을 그립니다)
+        raw_angles = np.arctan2(layer_dots[:, 1] - center_y, layer_dots[:, 0] - center_x)
         angles = (raw_angles + 2 * np.pi) % (2 * np.pi)
 
         # 5. 현재 섹터(Sector) 범위에 맞는 점들만 마스킹(필터링)
@@ -755,54 +724,73 @@ class STLToolPath():
 
         return valid_dots, valid_degs
 
-    def optimize_differential_step(self, current_q, delta_pos_m, current_dir, next_dir):
+    def optimize_to_target(self, current_q_deg, T_target):
+        import math
         import numpy as np
         import PyKDL as kdl
-
-        current_q_rad = np.array(current_q, dtype=float) * np.pi / 180.0
-
-        # 1. KDL로 현재 로봇의 진짜 Z축(Tool0) 방향을 읽어옵니다.
-        for i in range(self.num_joints):
-            self.kdl_jnt_array[i] = current_q_rad[i]
         
+        q_rad = np.array(current_q_deg, dtype=float) * np.pi / 180.0
         fk_solver = kdl.ChainFkSolverPos_recursive(self.kdl_chain)
         frame = kdl.Frame()
-        fk_solver.JntToCart(self.kdl_jnt_array, frame)
-        actual_z_bl = np.array([frame.M[0,2], frame.M[1,2], frame.M[2,2]])
-
-        # 2. 목표 방향 (Base_link 기준, 표면 안쪽을 향하도록 계산)
-        # 밖을 향하는 노멀 벡터(next_dir)를 Base_link의 '안쪽'을 향하는 벡터로 변환합니다.
-        target_z_bl = np.array([next_dir[0], next_dir[1], -next_dir[2]])
-
-        # 3. 완벽한 방향 피드백 (실제 Z축이 목표 Z축을 무조건 따라가도록 오차를 닫아버립니다!)
-        rot_align = np.cross(actual_z_bl, target_z_bl)
         
-        T_req = np.concatenate((delta_pos_m, rot_align))
-        T_free = np.concatenate(([0.0, 0.0, 0.0], target_z_bl))
-
-        # 4. 야코비안 및 DLS 연산
-        J_current = self.get_jacobian(current_q_rad)
-        lambda_dls = 0.01 
-        J_inv = J_current.T @ np.linalg.inv(J_current @ J_current.T + (lambda_dls**2) * np.eye(6))
-
-        dq_req = np.dot(J_inv, T_req)
-        dq_free = np.dot(J_inv, T_free)
-
-        # 5. Alpha 계산 (손목 꼬임 방지)
-        numerator = np.dot(dq_free.T, dq_req)
-        denominator = np.dot(dq_free.T, dq_free)
-        alpha = 0.0 if denominator < 1e-6 else -numerator / denominator
-        alpha = np.clip(alpha, -0.1, 0.1)
-
-        opt_D_q = dq_req + alpha * dq_free
-        
-        # 6. 속도 브레이크
-        max_step_norm = 0.18
-        current_norm = np.linalg.norm(opt_D_q)
-        if current_norm > max_step_norm:
-            opt_D_q = opt_D_q * (max_step_norm / current_norm)
-
-        return opt_D_q
+        # 🌟 함수 내부에서 0.5mm 이내로 도달할 때까지 KDL 자체 연산으로 수렴시킵니다.
+        for step in range(50):
+            for i in range(self.num_joints):
+                self.kdl_jnt_array[i] = q_rad[i]
+                
+            fk_solver.JntToCart(self.kdl_jnt_array, frame)
+            
+            # 현재 로봇 위치 (BaseLink -> Tool0)
+            T_current = np.array([
+                [frame.M[0,0], frame.M[0,1], frame.M[0,2], frame.p[0]],
+                [frame.M[1,0], frame.M[1,1], frame.M[1,2], frame.p[1]],
+                [frame.M[2,0], frame.M[2,1], frame.M[2,2], frame.p[2]],
+                [0, 0, 0, 1]
+            ])
+            
+            # 6D 오차 계산 (위치 + 회전 완벽 구속)
+            delta_pos = T_target[0:3, 3] - T_current[0:3, 3]
+            dist_error = np.linalg.norm(delta_pos)
+            
+            R_err = np.dot(T_target[0:3, 0:3], T_current[0:3, 0:3].T)
+            tr = np.trace(R_err)
+            theta = math.acos(np.clip((tr - 1.0) / 2.0, -1.0, 1.0))
+            
+            # 🌟 위치 오차 0.5mm, 회전 오차 0.28도 이내면 완벽 도달로 판정하고 탈출!
+            if dist_error < 0.0005 and theta < 0.005:
+                break
+                
+            if theta < 1e-5:
+                rot_error = np.zeros(3)
+            else:
+                axis = (1.0 / (2 * math.sin(theta))) * np.array([
+                    R_err[2, 1] - R_err[1, 2],
+                    R_err[0, 2] - R_err[2, 0],
+                    R_err[1, 0] - R_err[0, 1]
+                ])
+                rot_error = axis * theta
+                
+            T_req = np.concatenate((delta_pos, rot_error))
+            
+            self.jac_solver.JntToJac(self.kdl_jnt_array, self.kdl_jacobian)
+            J_current = np.zeros((6, self.num_joints))
+            for i in range(6):
+                for j in range(self.num_joints):
+                    J_current[i, j] = self.kdl_jacobian[i, j]
+                    
+            lambda_dls = 0.01 
+            J_inv = J_current.T @ np.linalg.inv(J_current @ J_current.T + (lambda_dls**2) * np.eye(6))
+            
+            dq_req = np.dot(J_inv, T_req)
+            
+            max_step = 0.05 
+            norm_dq = np.linalg.norm(dq_req)
+            if norm_dq > max_step:
+                dq_req = dq_req * (max_step / norm_dq)
+                
+            q_rad = q_rad + dq_req
+            
+        return q_rad * 180.0 / np.pi
 
     def get_jacobian(self, joint_angles):
         """

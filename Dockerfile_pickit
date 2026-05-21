@@ -207,5 +207,8 @@ RUN /bin/bash -c "cd ~/ && \
     git clone https://github.com/AprilRobotics/apriltag_ros.git src/apriltag_ros &&\
     apt install -y apriltag &&\
     apt install -y ros-noetic-apriltag &&\
+    apt install -y python3-pykdl &&\
+    apt install -y ros-noetic-kdl-parser-py &&\
+    rm -rf /var/lib/apt/lists/* &&\
     source /opt/ros/noetic/setup.bash &&\
     catkin_make"

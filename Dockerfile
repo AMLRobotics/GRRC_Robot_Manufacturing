@@ -34,9 +34,10 @@ RUN /bin/bash -c "cd ~/catkin_ws &&\
     git clone https://github.com/Hangijun/Universal_Robots_ROS_Driver_UR5.git src/Universal_Robots_ROS_Driver &&\
     git clone -b calibration_devel https://github.com/fmauch/universal_robot.git src/fmauch_universal_robot &&\    
     apt update -qq &&\
-    rosdep update &&\
+    rosdep update --include-eol-distros &&\
     rosdep install --from-paths src --ignore-src -y &&\
     cd ~/catkin_ws &&\
+    source /opt/ros/noetic/setup.bash &&\
     catkin_make &&\
     chmod 777 src/Universal_Robots_ROS_Driver/ur_robot_driver/launch/ur5_cartesian_passthrough_bringup.launch &&\
     source devel/setup.bash"
@@ -51,8 +52,9 @@ RUN /bin/bash -c "apt-get update &&\
     git clone https://github.com/UniversalRobots/Universal_Robots_ROS_cartesian_control_msgs.git src/Universal_Robots_ROS_cartesian_control_msgs &&\
     git clone https://github.com/UniversalRobots/Universal_Robots_ROS_controllers_cartesian.git src/Universal_Robots_ROS_controllers_cartesian &&\
     sudo apt update -qq &&\
-    rosdep update &&\
+    rosdep update --include-eol-distros &&\
     rosdep install --from-paths src --ignore-src -y &&\
+    source devel/setup.bash &&\
     catkin_make &&\
     source devel/setup.bash"
 

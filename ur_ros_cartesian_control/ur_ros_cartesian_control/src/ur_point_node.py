@@ -245,16 +245,16 @@ class UR():
         move_dir = pos_data.data.split(' ')
         move_pos = []
         grip_dir = []
+        #print(move_dir)
 
         for i in range(len(move_dir)):
             move_dir[i] = move_dir[i].split(',')
-            move_pos.append(move_dir[i][:6])
-            grip_dir.append(move_dir[i][6])
+            move_pos.append(move_dir[i])
 
         if  not isinstance(move_pos[0], list):
             move_pos = [move_pos]
 
-        #uvprint(move_pos)
+        #print(move_pos)
         for i in range(len(move_pos)):
             for j in range(len(move_pos[0])):
                 move_pos[i][j] = float(move_pos[i][j])
@@ -267,17 +267,24 @@ class UR():
     # Change value of euler pose and call the control function(cartesian_traj)
     def move(self, pose):
         self.move_flag = True        
-        time_from_start = 3.0
+        time_from_start = len(pose) * 2.0
 
         #for l in pose:
         # check cartesian limit to 1.0 m of the 3d circle
-        for l in pose:
-            check = self.check_cartesian_limit(l[0], l[1], l[2], l[3], l[4], l[5])
-            if check == False: return
+        if len(pose[0]) == 6:
+            for l in pose:
+                check = self.check_cartesian_limit(l[0], l[1], l[2], l[3], l[4], l[5])
+                if check == False: return
 
-        # Call Cartesian Trajectory Function with Changed Pose Parameters
-        self.cartesian_traj(pose, time_from_start)
-        self.move_flag = False
+            # Call Cartesian Trajectory Function with Changed Pose Parameters
+            self.cartesian_traj(pose, time_from_start)
+            self.move_flag = False
+        
+        elif len(pose[0]) == 7:
+            # Call Cartesian Trajectory Function with Changed Pose Parameters
+            self.cartesian_traj(pose, time_from_start)
+            self.move_flag = False
+
 
     # Function for take care of Keyboard Input
     # Convert Quaternion to Euler
@@ -288,7 +295,7 @@ class UR():
         if key == keyboard.KeyCode(char='c'):
             self.move_flag = True
             # pose list
-            pose_list = [[0.0, -0.3, 0.4, 180.0, 0.0, 0.0], [0.0, -0.3, 0.4, 270.0, 0.0, 0.0], [0.0, -0.3, 0.4, 270.0, 0.0, 90.0], [0.0, -0.3, 0.4, 180.0, 0.0, 0.0]]
+            pose_list = [[-0.2, -0.2, 0.4, 180.0, 0.0, 0.0], [0.0, -0.2, 0.4, 180.0, 0.0, 0.0]]
 
             time_from_start = 8.0
 
@@ -312,7 +319,7 @@ class UR():
             self.move_flag = True
             for i in range(500):
                 # pose list
-                pose_list = [[0.0, -0.4, 0.4, 180.0, 0.0, 0.0], [0.0, -0.3, 0.4, 180.0, 90.0, 90.0], [0.0, -0.3, 0.4, 180.0, 0.0, 0.0]]
+                pose_list = [[-0.2, -0.3, 0.4, 180.0, 0.0, 0.0], [0.0, -0.3, 0.4, 180.0, 0.0, 0.0]]
 
                 time_from_start = 4.0
 
@@ -428,39 +435,70 @@ class UR():
     # Function for Control UR Robot in the Cartesian Coordinate
     def cartesian_traj(self, pose_list, time_from_start=0.01):     
         goal = FollowCartesianTrajectoryGoal()
-
-        for l in pose_list:
-            point = CartesianTrajectoryPoint()
-            point.pose.position.x = l[0]
-            point.pose.position.y = l[1]
-            point.pose.position.z = l[2]
-
-            rot = Rotation.from_euler('xyz', [l[3], l[4], l[5]], degrees=True)
-            rot_quat = rot.as_quat()
-            #print(rot_quat)
-            point.acceleration.linear.x = 0.5
-            point.acceleration.linear.y = 0.5
-            point.acceleration.linear.z = 0.5
-
-            point.acceleration.angular.x = 0.5
-            point.acceleration.angular.y = 0.5
-            point.acceleration.angular.z = 0.5
-
-
-            point.pose.orientation.x = -rot_quat[0]
-            point.pose.orientation.y = -rot_quat[1]
-            point.pose.orientation.z = -rot_quat[2]
-            point.pose.orientation.w = -rot_quat[3]
-
-            #print(point.pose)
-
-            point.time_from_start = rospy.Duration(secs = time_from_start)
-            goal.trajectory.points.append(point)
         
-        goal.goal_time_tolerance = rospy.Duration(0.6)
+        if len(pose_list[0]) == 6:
+            for l in pose_list:
+                point = CartesianTrajectoryPoint()
+                point.pose.position.x = l[0]
+                point.pose.position.y = l[1]
+                point.pose.position.z = l[2]
+
+                rot = Rotation.from_euler('xyz', [l[3], l[4], l[5]], degrees=True)
+                rot_quat = rot.as_quat()
+                #print(rot_quat)
+                point.acceleration.linear.x = 0.5
+                point.acceleration.linear.y = 0.5
+                point.acceleration.linear.z = 0.5
+
+                point.acceleration.angular.x = 0.5
+                point.acceleration.angular.y = 0.5
+                point.acceleration.angular.z = 0.5
+
+                point.pose.orientation.x = -rot_quat[0]
+                point.pose.orientation.y = -rot_quat[1]
+                point.pose.orientation.z = -rot_quat[2]
+                point.pose.orientation.w = -rot_quat[3]
+
+                #print(point.pose)
+
+                point.time_from_start = rospy.Duration(secs = time_from_start)
+                goal.trajectory.points.append(point)
+            
+            goal.goal_time_tolerance = rospy.Duration(0.6)
         
-        self.cartesian_passthrough_trajectory_client.send_goal(goal)
-        self.cartesian_passthrough_trajectory_client.wait_for_result()
+            self.cartesian_passthrough_trajectory_client.send_goal(goal)
+            self.cartesian_passthrough_trajectory_client.wait_for_result()
+
+        elif len(pose_list[0]) == 7:
+            for l in pose_list:
+                point = CartesianTrajectoryPoint()
+                point.pose.position.x = l[0]
+                point.pose.position.y = l[1]
+                point.pose.position.z = l[2]
+
+                #print(rot_quat)
+                point.acceleration.linear.x = 0.5
+                point.acceleration.linear.y = 0.5
+                point.acceleration.linear.z = 0.5
+
+                point.acceleration.angular.x = 0.5
+                point.acceleration.angular.y = 0.5
+                point.acceleration.angular.z = 0.5
+
+                point.pose.orientation.x = l[3]
+                point.pose.orientation.y = l[4]
+                point.pose.orientation.z = l[5]
+                point.pose.orientation.w = l[6]
+
+                #print(point.pose)
+
+                point.time_from_start = rospy.Duration(secs = time_from_start)
+                goal.trajectory.points.append(point)
+            
+            goal.goal_time_tolerance = rospy.Duration(0.6)
+        
+            self.cartesian_passthrough_trajectory_client.send_goal(goal)
+            self.cartesian_passthrough_trajectory_client.wait_for_result()            
         #print(self.cartesian_trajectory_client.get_result())
 
         #rospy.loginfo("Received result SUCCESSFUL")

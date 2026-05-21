@@ -23,7 +23,7 @@ services:
   volumes:
    - /tmp/.X11-unix:/tmp/.X11-unix:rw
    - ./ur_ros_cartesian_control:/root/catkin_ws/src/ur_ros_cartesian_control
-  command: "source /opt/ros/noetic/setup.bash &&\ 
+  command: bash -c "source /opt/ros/noetic/setup.bash &&\ 
           cd ~/catkin_ws && catkin_make &&\ 
           rm -rf /root/catkin_ws/src/fmauch_universal_robot/ur_description/urdf/ur.xacro &&\
           cp src/ur_ros_cartesian_control/ur_ros_cartesian_control/ur.xacro src/fmauch_universal_robot/ur_description/urdf/ur.xacro &&\
@@ -55,7 +55,7 @@ services:
 
  pickit-camera:
   image: pickit:latest
-  #container_name: ur-ros-control
+  container_name: pickit-camera
   networks:
    macvlan-network:
     ipv4_address: 192.168.1.5
@@ -73,7 +73,7 @@ services:
 
  stl_reader:
   image: pickit:latest
-  #container_name: ur-ros-control
+  container_name: stl_reader
   networks:
    macvlan-network:
     ipv4_address: 192.168.1.6
@@ -87,7 +87,7 @@ services:
   command: tail -F anything
   privileged: true
 
-robot_simulation:
+ robot_simulation:
   image: ur-ros-control:latest
   container_name: robot_simulation
   networks:

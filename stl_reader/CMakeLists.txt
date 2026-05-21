@@ -7,15 +7,33 @@ project(stl_reader)
 find_package(catkin REQUIRED COMPONENTS
   rospy
   tf2_ros
+  std_msgs
+  message_generation
   geometry_msgs
   tf2_geometry_msgs
   tf
 )
 
+add_message_files(
+  FILES
+  TargetJointDegs.msg
+)
+
+add_service_files(
+  FILES
+  joint2cartesian.srv
+  cartesian2joint.srv
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
 catkin_package(
 )
 
-install(DIRECTORY launch
+install(DIRECTORY launch srv
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 
 include_directories(
